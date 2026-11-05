@@ -14,6 +14,7 @@ license.key
 admin_keygen.py
 license_generator_gui.py
 GENERATE_LICENSE_KEY.bat
+PUSH_TO_GITHUB.bat
 generated_licenses.txt
 accounts.json
 accounts.txt
