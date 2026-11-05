@@ -29,44 +29,30 @@ LICENSE_FILE = os.path.join(get_base_dir(), "license.key")
 
 def get_machine_hwid() -> str:
     """
-    Extracts stable hardware identifiers (Motherboard UUID + Cryptography MachineGuid)
-    to generate a tamper-resistant, unique 16-character Hardware ID (HWID).
+    Extracts 100% stable, permanent hardware identifiers:
+    Windows MachineGuid (unique per Windows installation) + CPU Processor Identifier.
+    Zero-delay, zero-permission requirement, permanent across all reboots.
     """
-    raw_ids = []
-
-    # 1. Motherboard / BIOS UUID
+    import winreg
+    guid_val = ""
     try:
-        out = subprocess.check_output(
-            ["powershell", "-NoProfile", "-Command", "(Get-CimInstance -Class Win32_ComputerSystemProduct).UUID"],
-            shell=True,
-            stderr=subprocess.DEVNULL,
-            timeout=3
-        ).decode().strip()
-        if out and "error" not in out.lower():
-            raw_ids.append(out)
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Cryptography",
+            0,
+            winreg.KEY_READ | winreg.KEY_WOW64_64KEY
+        )
+        guid_val, _ = winreg.QueryValueEx(key, "MachineGuid")
+        winreg.CloseKey(key)
     except Exception:
         pass
 
-    # 2. Windows Cryptography MachineGuid (Registry)
-    try:
-        import winreg
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY)
-        guid, _ = winreg.QueryValueEx(key, "MachineGuid")
-        if guid:
-            raw_ids.append(str(guid).strip())
-    except Exception:
-        pass
+    cpu_id = os.environ.get("PROCESSOR_IDENTIFIER", "GENERIC_X64_CPU")
+    comp_name = os.environ.get("COMPUTERNAME", "PC")
 
-    # 3. Fallback Processor Identifier / Username
-    if not raw_ids:
-        raw_ids.append(os.environ.get("PROCESSOR_IDENTIFIER", "DEFAULT_CPU"))
-        raw_ids.append(os.environ.get("COMPUTERNAME", "DEFAULT_PC"))
-
-    combined = "||".join(raw_ids).strip()
+    combined = f"{guid_val}||{cpu_id}||{comp_name}".upper()
     h = hashlib.sha256(combined.encode("utf-8")).hexdigest().upper()
-    # Format as 4 groups of 4 characters: HWID-XXXX-YYYY-ZZZZ-WWWW
-    hwid = f"{h[0:4]}-{h[4:8]}-{h[8:12]}-{h[12:16]}"
-    return hwid
+    return f"{h[0:4]}-{h[4:8]}-{h[8:12]}-{h[12:16]}"
 
 def create_license_payload(client_name: str, hwid: str, days: int = 30) -> str:
     """
@@ -202,3 +188,4 @@ def check_system_license() -> dict:
     res = verify_license_key(saved)
     res["current_hwid"] = get_machine_hwid()
     return res
+

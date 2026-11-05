@@ -12,6 +12,9 @@ dist/
 profiles/
 license.key
 admin_keygen.py
+license_generator_gui.py
+GENERATE_LICENSE_KEY.bat
+generated_licenses.txt
 accounts.json
 accounts.txt
 success_accounts.json
