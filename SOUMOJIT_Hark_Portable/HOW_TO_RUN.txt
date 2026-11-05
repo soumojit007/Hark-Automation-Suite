@@ -1,0 +1,14 @@
+=============================================================
+  SOUMOJIT Hark Account Creator & Chrome Profile Manager
+=============================================================
+
+Kaise Chalayein:
+1. Is folder ko kisi bhi PC par copy karein.
+2. 'SOUMOJIT_Hark_Tool.exe' par double click karke run karein.
+3. Top par 'Open Atomic Mail' dabayein aur apna mail account login karein.
+4. Niche apna Atomic Mail ID aur password enter karke 'Start Automatic Account Creation' dabayein!
+
+Note:
+- Is PC par Python install karne ki koi zaroorat nahi hai.
+- Sirf Google Chrome installed hona chahiye.
+=============================================================

@@ -1,0 +1,27 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller build outputs
+build/
+dist/
+*.spec
+
+# User local data & browser profiles
+profiles/
+accounts.json
+accounts.txt
+success_accounts.json
+success_accounts.txt
+failed_accounts.json
+failed_accounts.txt
+used_emails.txt
+config.json
+accounts_export.csv
+
+# Environment & IDE
+.venv/
+venv/
+.idea/
+.vscode/
