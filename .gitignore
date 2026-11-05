@@ -10,6 +10,8 @@ dist/
 
 # User local data & browser profiles
 profiles/
+license.key
+admin_keygen.py
 accounts.json
 accounts.txt
 success_accounts.json
@@ -25,3 +27,4 @@ accounts_export.csv
 venv/
 .idea/
 .vscode/
+

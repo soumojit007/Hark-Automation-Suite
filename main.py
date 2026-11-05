@@ -13,6 +13,7 @@ import profile_manager as pm
 from dot_method import generate_dot_variations
 import cdp_automation as cdp
 import atomic_mail_scraper as ams
+import license_manager as lm
 
 # Appearance & Styling
 ctk.set_appearance_mode("Dark")
@@ -44,7 +45,143 @@ class HarkCreatorApp(ctk.CTk):
         self.profile_filter = "All"
         self.last_atomic_msg_id = None
 
-        # Build UI layout
+        # Check License & Device HWID
+        self.license_info = lm.check_system_license()
+        if not self.license_info.get("valid"):
+            self.show_activation_screen()
+        else:
+            self.build_main_ui()
+
+    def show_activation_screen(self):
+        for w in self.winfo_children():
+            w.destroy()
+
+        hwid = lm.get_machine_hwid()
+
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.place(relx=0.5, rely=0.5, anchor="center")
+
+        card = ctk.CTkFrame(container, fg_color="#161b22", corner_radius=12, border_width=1, border_color="#30363d", width=560)
+        card.pack(padx=20, pady=20)
+
+        # Header
+        icon_lbl = ctk.CTkLabel(card, text="🔒", font=ctk.CTkFont(size=44))
+        icon_lbl.pack(pady=(24, 6))
+
+        title_lbl = ctk.CTkLabel(
+            card,
+            text="SOUMOJIT HARK AUTOMATION",
+            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+            text_color="#00e5ff"
+        )
+        title_lbl.pack()
+
+        sub_lbl = ctk.CTkLabel(
+            card,
+            text="Commercial License & HWID Activation Required",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color="#8b949e"
+        )
+        sub_lbl.pack(pady=(2, 18))
+
+        # HWID Box
+        hwid_frame = ctk.CTkFrame(card, fg_color="#0d1117", corner_radius=8, border_width=1, border_color="#21262d")
+        hwid_frame.pack(fill="x", padx=32, pady=6)
+
+        ctk.CTkLabel(
+            hwid_frame,
+            text="YOUR MACHINE HWID:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#8b949e"
+        ).pack(anchor="w", padx=14, pady=(10, 2))
+
+        hwid_row = ctk.CTkFrame(hwid_frame, fg_color="transparent")
+        hwid_row.pack(fill="x", padx=14, pady=(0, 10))
+
+        hwid_display = ctk.CTkLabel(
+            hwid_row,
+            text=hwid,
+            font=ctk.CTkFont(family="Consolas", size=17, weight="bold"),
+            text_color="#00e676"
+        )
+        hwid_display.pack(side="left")
+
+        btn_copy_hwid = ctk.CTkButton(
+            hwid_row,
+            text="📋 Copy HWID",
+            width=110,
+            height=30,
+            fg_color="#0288d1",
+            hover_color="#0277bd",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=lambda: self.copy_hwid_action(hwid, btn_copy_hwid)
+        )
+        btn_copy_hwid.pack(side="right")
+
+        hint_lbl = ctk.CTkLabel(
+            card,
+            text="ℹ️ Send this HWID to the administrator (@SOUMOJIT) to purchase or activate your license key.",
+            font=ctk.CTkFont(size=11),
+            text_color="#78909c",
+            wraplength=480,
+            justify="center"
+        )
+        hint_lbl.pack(padx=32, pady=(8, 14))
+
+        # Key Input
+        entry_key = ctk.CTkEntry(
+            card,
+            placeholder_text="Paste your License Key here (SJHK.xxxx.yyyy)...",
+            width=460,
+            height=40,
+            font=ctk.CTkFont(size=12)
+        )
+        entry_key.pack(padx=32, pady=4)
+
+        err_lbl = ctk.CTkLabel(card, text="", font=ctk.CTkFont(size=11, weight="bold"), text_color="#ef5350")
+        err_lbl.pack(pady=(4, 6))
+
+        btn_activate = ctk.CTkButton(
+            card,
+            text="🔑 Activate License Now",
+            width=460,
+            height=42,
+            fg_color="#00c853",
+            hover_color="#00a844",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            command=lambda: self.activate_license_action(entry_key.get(), err_lbl)
+        )
+        btn_activate.pack(padx=32, pady=(0, 24))
+
+    def copy_hwid_action(self, hwid, btn):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(hwid)
+            btn.configure(text="✅ Copied!", fg_color="#2e7d32")
+            self.after(2000, lambda: btn.configure(text="📋 Copy HWID", fg_color="#0288d1"))
+        except Exception:
+            pass
+
+    def activate_license_action(self, key_str, err_lbl):
+        key = key_str.strip()
+        if not key:
+            err_lbl.configure(text="[!] Please enter a valid license key.", text_color="#ef5350")
+            return
+
+        res = lm.verify_license_key(key)
+        if res.get("valid"):
+            lm.save_license(key)
+            self.license_info = res
+            err_lbl.configure(text=f"✅ Activated! Welcome, {res.get('client')} ({res.get('expires')})", text_color="#00e676")
+            self.after(800, self.build_main_ui)
+        else:
+            reason = res.get("reason", "Invalid license key.")
+            err_lbl.configure(text=f"❌ {reason}", text_color="#ef5350")
+
+    def build_main_ui(self):
+        for w in self.winfo_children():
+            w.destroy()
+
         self.create_header()
         self.create_navigation()
         self.create_content_frames()
@@ -76,6 +213,24 @@ class HarkCreatorApp(ctk.CTk):
 
         links_box = ctk.CTkFrame(self.header_frame, fg_color="transparent")
         links_box.pack(side="right", padx=18, pady=10)
+
+        # License Status Badge
+        lic = getattr(self, 'license_info', {})
+        client_name = lic.get('client', 'User')
+        days_left = lic.get('days_left', 0)
+        exp_txt = "👑 Lifetime VIP" if days_left > 3650 else f"👑 {client_name} ({days_left}d)"
+
+        lic_badge = ctk.CTkLabel(
+            links_box,
+            text=exp_txt,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            fg_color="#182d21",
+            text_color="#00e676",
+            corner_radius=6,
+            padx=10,
+            pady=3
+        )
+        lic_badge.pack(side="left", padx=8)
 
         btn_open_atomic = ctk.CTkButton(
             links_box,
@@ -1108,6 +1263,48 @@ class HarkCreatorApp(ctk.CTk):
             command=self.save_settings_action
         )
         btn_save_cfg.pack(side="left", padx=(0, 10))
+
+        # Commercial License & Device Card
+        lic_card = ctk.CTkFrame(self.frame_settings, fg_color="#181c24", corner_radius=10)
+        lic_card.pack(fill="x", padx=10, pady=(10, 10))
+
+        ctk.CTkLabel(
+            lic_card,
+            text="Commercial License & Device Binding",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#00e5ff"
+        ).pack(anchor="w", padx=20, pady=(16, 8))
+
+        lic = getattr(self, 'license_info', {})
+        l_grid = ctk.CTkFrame(lic_card, fg_color="transparent")
+        l_grid.pack(fill="x", padx=20, pady=4)
+
+        ctk.CTkLabel(l_grid, text="Licensed To:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(l_grid, text=lic.get('client', 'N/A'), font=ctk.CTkFont(size=12), text_color="#00e676").grid(row=0, column=1, sticky="w", padx=10, pady=4)
+
+        ctk.CTkLabel(l_grid, text="Registered HWID:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=1, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(l_grid, text=lm.get_machine_hwid(), font=ctk.CTkFont(family="Consolas", size=12), text_color="#00bcd4").grid(row=1, column=1, sticky="w", padx=10, pady=4)
+
+        ctk.CTkLabel(l_grid, text="License Expiry:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=2, column=0, sticky="w", pady=4)
+        ctk.CTkLabel(l_grid, text=f"{lic.get('expires', 'N/A')} ({lic.get('days_left', 0)} days remaining)", font=ctk.CTkFont(size=12), text_color="#ffb300").grid(row=2, column=1, sticky="w", padx=10, pady=4)
+
+        btn_deactivate = ctk.CTkButton(
+            lic_card,
+            text="🔄 Change / Renew License Key",
+            fg_color="#37474f",
+            hover_color="#455a64",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self.deactivate_license_action
+        )
+        btn_deactivate.pack(anchor="w", padx=20, pady=(8, 16))
+
+    def deactivate_license_action(self):
+        try:
+            if os.path.exists(lm.LICENSE_FILE):
+                os.remove(lm.LICENSE_FILE)
+        except Exception:
+            pass
+        self.show_activation_screen()
 
     def save_settings_action(self):
         self.cfg["mail_provider_url"] = self.entry_mail_url.get().strip()

@@ -47,3 +47,4 @@ Automated Hark account creation and multi-profile manager tool built with Custom
 ## ⚙️ Requirements
 - Windows 10 / 11
 - Google Chrome Browser
+
