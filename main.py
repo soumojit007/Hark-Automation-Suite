@@ -358,6 +358,10 @@ class HarkCreatorApp(ctk.CTk):
         self.entry_password.insert(0, self.cfg.get("default_password", "HarkPassword2026!"))
         self.entry_password.grid(row=2, column=1, sticky="w", padx=10, pady=4)
 
+        ctk.CTkLabel(form_grid, text="Task Note / Reminder:", font=ctk.CTkFont(size=12, weight="bold")).grid(row=3, column=0, sticky="w", pady=4)
+        self.entry_task_note = ctk.CTkEntry(form_grid, width=320, placeholder_text="e.g. Client X - Batch 1 / Warmup")
+        self.entry_task_note.grid(row=3, column=1, sticky="w", padx=10, pady=4)
+
         ctrl_frame = ctk.CTkFrame(creator_card, fg_color="transparent")
         ctrl_frame.pack(fill="x", padx=20, pady=(12, 16))
 
@@ -555,6 +559,7 @@ class HarkCreatorApp(ctk.CTk):
         email = self.entry_master_email.get().strip()
         count_str = self.entry_count.get().strip()
         password = self.entry_password.get().strip()
+        task_note = self.entry_task_note.get().strip()
 
         if not email or "@" not in email:
             self.log("ERROR: Please enter a valid Atomic Mail address.")
@@ -672,7 +677,7 @@ class HarkCreatorApp(ctk.CTk):
                 batch_stats = []
 
                 for w_idx, var_email in enumerate(batch_emails):
-                    acc = pm.add_account(var_email, status="In Progress...", password=password)
+                    acc = pm.add_account(var_email, status="In Progress...", password=password, note=task_note)
                     self.after(0, self.refresh_profile_list)
                     stat = {'done': False, 'proc': None, 'acc': acc}
                     batch_stats.append(stat)
@@ -865,6 +870,76 @@ class HarkCreatorApp(ctk.CTk):
         self.after(50, self.refresh_profile_list)
         self.log("[!] All open Hark windows closed by user.")
 
+    def edit_note_dialog(self, acc):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title(f"Task Reminder - Profile #{acc.get('id')}")
+        dialog.geometry("500x240")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color="#12171f")
+        dialog.transient(self)
+        dialog.grab_set()
+
+        ctk.CTkLabel(
+            dialog,
+            text=f"📝 Profile #{acc.get('id')} - Task Note / Reminder",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color="#00e5ff"
+        ).pack(pady=(18, 4))
+
+        ctk.CTkLabel(
+            dialog,
+            text=f"{acc.get('email')}",
+            font=ctk.CTkFont(size=12),
+            text_color="#90a4ae"
+        ).pack(pady=(0, 10))
+
+        entry_note = ctk.CTkEntry(
+            dialog,
+            width=440,
+            height=38,
+            placeholder_text="Enter custom task note or reminder (e.g. Client X / Warmup)...",
+            font=ctk.CTkFont(size=12)
+        )
+        entry_note.insert(0, acc.get("note", ""))
+        entry_note.pack(pady=6)
+        entry_note.focus()
+
+        btn_box = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_box.pack(pady=(14, 16))
+
+        def save_action():
+            val = entry_note.get().strip()
+            pm.update_account_note(acc.get("id"), val)
+            acc["note"] = val
+            dialog.destroy()
+            self.refresh_profile_list()
+
+        entry_note.bind("<Return>", lambda e: save_action())
+
+        btn_save = ctk.CTkButton(
+            btn_box,
+            text="💾 Save Note",
+            width=120,
+            height=34,
+            fg_color="#00c853",
+            hover_color="#00a844",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=save_action
+        )
+        btn_save.pack(side="left", padx=8)
+
+        btn_cancel = ctk.CTkButton(
+            btn_box,
+            text="Cancel",
+            width=90,
+            height=34,
+            fg_color="#37474f",
+            hover_color="#455a64",
+            font=ctk.CTkFont(size=12),
+            command=dialog.destroy
+        )
+        btn_cancel.pack(side="left", padx=8)
+
     def refresh_profile_list(self):
         for widget in self.profiles_scroll.winfo_children():
             widget.destroy()
@@ -938,6 +1013,23 @@ class HarkCreatorApp(ctk.CTk):
                 anchor="w"
             )
             lbl_port.pack(anchor="w")
+
+            note_val = acc.get("note", "").strip()
+            note_display = f"📝 Note: {note_val}" if note_val else "📝 + Add Task Note"
+            note_color = "#00e5ff" if note_val else "#607d8b"
+            btn_note = ctk.CTkButton(
+                email_frame,
+                text=note_display,
+                font=ctk.CTkFont(size=11),
+                text_color=note_color,
+                fg_color="#182330" if note_val else "transparent",
+                hover_color="#243345",
+                height=22,
+                corner_radius=4,
+                anchor="w",
+                command=lambda a=acc: self.edit_note_dialog(a)
+            )
+            btn_note.pack(anchor="w", padx=(12, 0), pady=(2, 0))
 
             is_open = pm.is_window_alive(acc.get('port'))
 

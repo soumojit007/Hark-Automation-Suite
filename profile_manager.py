@@ -100,7 +100,8 @@ def save_accounts(accounts):
 def sync_accounts_txt(accounts):
     with open(ACCOUNTS_TXT, "w", encoding="utf-8") as f:
         for acc in accounts:
-            f.write(f"{acc.get('email', '')} | Password: {acc.get('password', '')} | Port: {acc.get('port', '')} | Status: {acc.get('status', '')} | Created: {acc.get('created_at', '')}\n")
+            note_str = f" | Note: {acc.get('note', '')}" if acc.get('note') else ""
+            f.write(f"#{acc.get('id', '')} - {acc.get('email', '')} | Password: {acc.get('password', '')} | Port: {acc.get('port', '')} | Status: {acc.get('status', '')}{note_str} | Created: {acc.get('created_at', '')}\n")
 
 def record_success(email, password, port, profile_path):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -204,11 +205,21 @@ def export_to_csv(filepath="accounts_export.csv"):
     if not accounts:
         return False
     with open(filepath, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["id", "email", "password", "port", "status", "created_at", "last_active", "profile_path"])
+        fieldnames = ["id", "email", "password", "port", "status", "note", "created_at", "last_active", "profile_path"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         for acc in accounts:
             writer.writerow(acc)
     return True
+
+def update_account_note(account_id: int, note: str):
+    accounts = load_accounts()
+    for a in accounts:
+        if a.get("id") == account_id:
+            a["note"] = note.strip()
+            save_accounts(accounts)
+            return True
+    return False
 
 def get_next_profile_info():
     """
@@ -234,7 +245,7 @@ def get_next_profile_info():
     os.makedirs(profile_path, exist_ok=True)
     return next_id, next_port, profile_path
 
-def add_account(email: str, status="In Progress...", password=""):
+def add_account(email: str, status="In Progress...", password="", note=""):
     """
     Creates a new account entry with a brand new, unused Chrome profile.
     If an existing account is already marked SUCCESSFUL, it will NOT be touched.
@@ -248,11 +259,16 @@ def add_account(email: str, status="In Progress...", password=""):
             st = a.get("status", "").upper()
             if "SUCCESS" in st:
                 # Do NOT touch or overwrite existing successful accounts!
+                if note and not a.get("note"):
+                    a["note"] = note
+                    save_accounts(accounts)
                 return a
             else:
                 a["status"] = status
                 if password:
                     a["password"] = password
+                if note:
+                    a["note"] = note
                 a["last_active"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 save_accounts(accounts)
                 return a
@@ -266,6 +282,7 @@ def add_account(email: str, status="In Progress...", password=""):
         "password": password,
         "port": port,
         "status": status,
+        "note": note,
         "created_at": now_str,
         "last_active": now_str,
         "profile_path": profile_path
