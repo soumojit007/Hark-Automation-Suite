@@ -44,6 +44,7 @@ class HarkCreatorApp(ctk.CTk):
         self.is_creating = False
         self.profile_filter = "All"
         self.last_atomic_msg_id = None
+        self.view_mode = "Grid"
 
         # Check License & Device HWID
         self.license_info = lm.check_system_license()
@@ -836,6 +837,22 @@ class HarkCreatorApp(ctk.CTk):
         self.seg_filter.set("All Profiles")
         self.seg_filter.pack(side="left")
 
+        # View Mode Switcher (Grid vs List)
+        self.seg_view = ctk.CTkSegmentedButton(
+            filter_bar,
+            values=["🔲 Grid View", "📋 List View"],
+            command=self.on_view_change,
+            selected_color="#2e7d32",
+            selected_hover_color="#1b5e20",
+            unselected_color="#1a1e27",
+            unselected_hover_color="#242b38",
+            text_color="#ffffff",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            height=32
+        )
+        self.seg_view.set("🔲 Grid View")
+        self.seg_view.pack(side="left", padx=12)
+
         self.lbl_profile_count = ctk.CTkLabel(
             filter_bar,
             text="",
@@ -852,6 +869,10 @@ class HarkCreatorApp(ctk.CTk):
             border_color="#212631"
         )
         self.profiles_scroll.pack(fill="both", expand=True)
+
+    def on_view_change(self, val):
+        self.view_mode = "Grid" if "Grid" in val else "List"
+        self.refresh_profile_list()
 
     def on_filter_change(self, val):
         self.profile_filter = val
@@ -954,6 +975,14 @@ class HarkCreatorApp(ctk.CTk):
             text=f"Total: {len(self.accounts)}  |  🟢 Live Open: {open_count}  |  ✅ Success: {len(success_list)}  |  ❌ Failed: {len(failed_list)}"
         )
 
+        # Configure columns for grid
+        if self.view_mode == "Grid":
+            self.profiles_scroll.grid_columnconfigure(0, weight=1)
+            self.profiles_scroll.grid_columnconfigure(1, weight=1)
+        else:
+            self.profiles_scroll.grid_columnconfigure(0, weight=1)
+            self.profiles_scroll.grid_columnconfigure(1, weight=0)
+
         # Filter items
         if self.profile_filter == "🟢 Open (Live)":
             display_items = [a for a in self.accounts if pm.is_window_alive(a.get('port'))]
@@ -971,22 +1000,10 @@ class HarkCreatorApp(ctk.CTk):
                 font=ctk.CTkFont(size=13),
                 text_color=COLOR_TEXT_MUTED
             )
-            empty_lbl.pack(pady=50)
+            empty_lbl.grid(row=0, column=0, columnspan=2, pady=50)
             return
 
         for idx, acc in enumerate(display_items):
-            row = ctk.CTkFrame(
-                self.profiles_scroll,
-                fg_color="#1a1e27",
-                corner_radius=6,
-                border_width=1,
-                border_color="#242b38"
-            )
-            row.pack(fill="x", padx=6, pady=4)
-
-            email_frame = ctk.CTkFrame(row, fg_color="transparent")
-            email_frame.pack(side="left", fill="y", padx=(12, 16), pady=8)
-
             # Determine Status & Icons
             st = acc.get("status", "Created").upper()
             is_success = "SUCCESS" in st or "ACTIVE" in st
@@ -994,43 +1011,7 @@ class HarkCreatorApp(ctk.CTk):
 
             icon_prefix = "✅ " if is_success else ("❌ " if is_fail else "⏳ ")
             email_color = "#00e676" if is_success else ("#ef5350" if is_fail else "#ffffff")
-
-            lbl_email = ctk.CTkLabel(
-                email_frame,
-                text=f"{icon_prefix}{idx+1}.  {acc.get('email', '')}",
-                font=ctk.CTkFont(size=13, weight="bold"),
-                text_color=email_color,
-                anchor="w"
-            )
-            lbl_email.pack(anchor="w")
-
             pwd_txt = acc.get('password', '')
-            lbl_port = ctk.CTkLabel(
-                email_frame,
-                text=f"     Profile #{acc.get('id')}  |  Port: {acc.get('port', 9400)}  |  Password: {pwd_txt}",
-                font=ctk.CTkFont(size=11),
-                text_color="#78909c",
-                anchor="w"
-            )
-            lbl_port.pack(anchor="w")
-
-            note_val = acc.get("note", "").strip()
-            note_display = f"📝 Note: {note_val}" if note_val else "📝 + Add Task Note"
-            note_color = "#00e5ff" if note_val else "#607d8b"
-            btn_note = ctk.CTkButton(
-                email_frame,
-                text=note_display,
-                font=ctk.CTkFont(size=11),
-                text_color=note_color,
-                fg_color="#182330" if note_val else "transparent",
-                hover_color="#243345",
-                height=22,
-                corner_radius=4,
-                anchor="w",
-                command=lambda a=acc: self.edit_note_dialog(a)
-            )
-            btn_note.pack(anchor="w", padx=(12, 0), pady=(2, 0))
-
             is_open = pm.is_window_alive(acc.get('port'))
 
             # Status pill with prominent tick mark for success
@@ -1047,16 +1028,6 @@ class HarkCreatorApp(ctk.CTk):
                 bg_color = "#37474f"
                 fg_color = "#b0bec5"
 
-            status_pill = ctk.CTkLabel(
-                row,
-                text=pill_text,
-                fg_color=bg_color,
-                text_color=fg_color,
-                corner_radius=4,
-                font=ctk.CTkFont(size=12, weight="bold")
-            )
-            status_pill.pack(side="left", padx=10, pady=8)
-
             # Live Window State Pill (🟢 OPEN vs ⚪ Closed)
             if is_open:
                 win_text = " 🟢 OPEN (LIVE) "
@@ -1067,80 +1038,262 @@ class HarkCreatorApp(ctk.CTk):
                 win_bg = "#212631"
                 win_fg = "#78909c"
 
-            status_win = ctk.CTkLabel(
-                row,
-                text=win_text,
-                fg_color=win_bg,
-                text_color=win_fg,
-                corner_radius=4,
-                font=ctk.CTkFont(size=12, weight="bold")
-            )
-            status_win.pack(side="left", padx=6, pady=8)
+            note_val = acc.get("note", "").strip()
+            note_display = f"📝 Note: {note_val}" if note_val else "📝 + Add Task Note"
+            note_color = "#00e5ff" if note_val else "#607d8b"
 
-            date_frame = ctk.CTkFrame(row, fg_color="transparent")
-            date_frame.pack(side="left", padx=14, pady=8)
-
-            lbl_dates = ctk.CTkLabel(
-                date_frame,
-                text=f"Created: {acc.get('created_at', '')}",
-                font=ctk.CTkFont(size=11),
-                text_color="#90a4ae"
-            )
-            lbl_dates.pack()
-
-            actions_frame = ctk.CTkFrame(row, fg_color="transparent")
-            actions_frame.pack(side="right", padx=(10, 12), pady=8)
-
-            # Retry button for non-successful / pending accounts
-            if not is_success:
-                btn_retry = ctk.CTkButton(
-                    actions_frame,
-                    text="🔁 Retry",
-                    width=85,
-                    height=32,
-                    fg_color="#e65100",
-                    hover_color="#bf360c",
-                    font=ctk.CTkFont(size=12, weight="bold"),
-                    command=lambda a=acc: self.retry_single_account(a)
+            if self.view_mode == "Grid":
+                # ================= GRID FORMAT (Modern 2-Column Dashboard Cards) =================
+                card = ctk.CTkFrame(
+                    self.profiles_scroll,
+                    fg_color="#181d26",
+                    corner_radius=8,
+                    border_width=1,
+                    border_color="#262f3d"
                 )
-                btn_retry.pack(side="left", padx=4)
+                card.grid(row=idx // 2, column=idx % 2, padx=6, pady=6, sticky="nsew")
 
-            if is_open:
-                btn_close = ctk.CTkButton(
+                # Top Row: Email & Status Badges
+                header = ctk.CTkFrame(card, fg_color="transparent")
+                header.pack(fill="x", padx=10, pady=(10, 4))
+
+                lbl_email = ctk.CTkLabel(
+                    header,
+                    text=f"{icon_prefix}#{acc.get('id', idx+1)}  {acc.get('email', '')}",
+                    font=ctk.CTkFont(size=12, weight="bold"),
+                    text_color=email_color,
+                    anchor="w"
+                )
+                lbl_email.pack(side="left", fill="x", expand=True)
+
+                status_pill = ctk.CTkLabel(
+                    header,
+                    text=pill_text,
+                    fg_color=bg_color,
+                    text_color=fg_color,
+                    corner_radius=4,
+                    font=ctk.CTkFont(size=10, weight="bold")
+                )
+                status_pill.pack(side="right", padx=(4, 0))
+
+                status_win = ctk.CTkLabel(
+                    header,
+                    text=win_text,
+                    fg_color=win_bg,
+                    text_color=win_fg,
+                    corner_radius=4,
+                    font=ctk.CTkFont(size=10, weight="bold")
+                )
+                status_win.pack(side="right")
+
+                # Sub Info Row: Port, Password, Created
+                sub_info = ctk.CTkFrame(card, fg_color="transparent")
+                sub_info.pack(fill="x", padx=10, pady=(0, 2))
+                lbl_details = ctk.CTkLabel(
+                    sub_info,
+                    text=f"Port: {acc.get('port', 9400)}  |  Pass: {pwd_txt}  |  {acc.get('created_at', '')}",
+                    font=ctk.CTkFont(size=10),
+                    text_color="#78909c",
+                    anchor="w"
+                )
+                lbl_details.pack(side="left")
+
+                # Task Note Button
+                btn_note = ctk.CTkButton(
+                    card,
+                    text=note_display,
+                    font=ctk.CTkFont(size=11),
+                    text_color=note_color,
+                    fg_color="#1f2735" if note_val else "transparent",
+                    hover_color="#283446",
+                    height=24,
+                    corner_radius=4,
+                    anchor="w",
+                    command=lambda a=acc: self.edit_note_dialog(a)
+                )
+                btn_note.pack(fill="x", padx=10, pady=(2, 6))
+
+                # Actions Row
+                actions_frame = ctk.CTkFrame(card, fg_color="transparent")
+                actions_frame.pack(fill="x", padx=10, pady=(0, 10))
+
+                if is_open:
+                    btn_win = ctk.CTkButton(
+                        actions_frame,
+                        text="🔴 Close Window",
+                        height=28,
+                        fg_color="#b71c1c",
+                        hover_color="#d32f2f",
+                        font=ctk.CTkFont(size=11, weight="bold"),
+                        command=lambda p=acc.get("port"): self.close_single_window_action(p)
+                    )
+                    btn_win.pack(side="left", fill="x", expand=True, padx=(0, 4))
+                else:
+                    btn_win = ctk.CTkButton(
+                        actions_frame,
+                        text="🌐 Open Profile",
+                        height=28,
+                        fg_color="#2e7d32" if is_success else "#0288d1",
+                        hover_color="#1b5e20" if is_success else "#0277bd",
+                        font=ctk.CTkFont(size=11, weight="bold"),
+                        command=lambda aid=acc.get("id"): self.open_single_profile_action(aid)
+                    )
+                    btn_win.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+                if not is_success:
+                    btn_retry = ctk.CTkButton(
+                        actions_frame,
+                        text="🔁 Retry",
+                        width=70,
+                        height=28,
+                        fg_color="#e65100",
+                        hover_color="#bf360c",
+                        font=ctk.CTkFont(size=11, weight="bold"),
+                        command=lambda a=acc: self.retry_single_account(a)
+                    )
+                    btn_retry.pack(side="left", padx=4)
+
+                btn_del = ctk.CTkButton(
                     actions_frame,
-                    text="🔴 Close Window",
-                    width=125,
-                    height=32,
-                    fg_color="#b71c1c",
+                    text="✕",
+                    width=28,
+                    height=28,
+                    fg_color="#2b3340",
                     hover_color="#d32f2f",
                     font=ctk.CTkFont(size=12, weight="bold"),
-                    command=lambda p=acc.get("port"): self.close_single_window_action(p)
+                    command=lambda aid=acc.get("id"): self.delete_account(aid)
                 )
-                btn_close.pack(side="left", padx=4)
-            else:
-                btn_open_chrome = ctk.CTkButton(
-                    actions_frame,
-                    text="🌐 Open Profile",
-                    width=125,
-                    height=32,
-                    fg_color="#2e7d32" if is_success else "#0288d1",
-                    hover_color="#1b5e20" if is_success else "#0277bd",
-                    font=ctk.CTkFont(size=12, weight="bold"),
-                    command=lambda aid=acc.get("id"): self.open_single_profile_action(aid)
-                )
-                btn_open_chrome.pack(side="left", padx=4)
+                btn_del.pack(side="left", padx=(4, 0))
 
-            btn_delete = ctk.CTkButton(
-                actions_frame,
-                text="✕",
-                width=32,
-                height=32,
-                fg_color="#37474f",
-                hover_color="#d32f2f",
-                font=ctk.CTkFont(size=13, weight="bold"),
-                command=lambda aid=acc.get("id"): self.delete_account(aid)
-            )
-            btn_delete.pack(side="left", padx=2)
+            else:
+                # ================= LIST FORMAT (Horizontal Wide Rows) =================
+                row = ctk.CTkFrame(
+                    self.profiles_scroll,
+                    fg_color="#1a1e27",
+                    corner_radius=6,
+                    border_width=1,
+                    border_color="#242b38"
+                )
+                row.grid(row=idx, column=0, columnspan=2, sticky="ew", padx=6, pady=4)
+
+                email_frame = ctk.CTkFrame(row, fg_color="transparent")
+                email_frame.pack(side="left", fill="y", padx=(12, 16), pady=8)
+
+                lbl_email = ctk.CTkLabel(
+                    email_frame,
+                    text=f"{icon_prefix}{idx+1}.  {acc.get('email', '')}",
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    text_color=email_color,
+                    anchor="w"
+                )
+                lbl_email.pack(anchor="w")
+
+                lbl_port = ctk.CTkLabel(
+                    email_frame,
+                    text=f"     Profile #{acc.get('id')}  |  Port: {acc.get('port', 9400)}  |  Password: {pwd_txt}",
+                    font=ctk.CTkFont(size=11),
+                    text_color="#78909c",
+                    anchor="w"
+                )
+                lbl_port.pack(anchor="w")
+
+                btn_note = ctk.CTkButton(
+                    email_frame,
+                    text=note_display,
+                    font=ctk.CTkFont(size=11),
+                    text_color=note_color,
+                    fg_color="#182330" if note_val else "transparent",
+                    hover_color="#243345",
+                    height=22,
+                    corner_radius=4,
+                    anchor="w",
+                    command=lambda a=acc: self.edit_note_dialog(a)
+                )
+                btn_note.pack(anchor="w", padx=(12, 0), pady=(2, 0))
+
+                status_pill = ctk.CTkLabel(
+                    row,
+                    text=pill_text,
+                    fg_color=bg_color,
+                    text_color=fg_color,
+                    corner_radius=4,
+                    font=ctk.CTkFont(size=12, weight="bold")
+                )
+                status_pill.pack(side="left", padx=10, pady=8)
+
+                status_win = ctk.CTkLabel(
+                    row,
+                    text=win_text,
+                    fg_color=win_bg,
+                    text_color=win_fg,
+                    corner_radius=4,
+                    font=ctk.CTkFont(size=12, weight="bold")
+                )
+                status_win.pack(side="left", padx=6, pady=8)
+
+                date_frame = ctk.CTkFrame(row, fg_color="transparent")
+                date_frame.pack(side="left", padx=14, pady=8)
+
+                lbl_dates = ctk.CTkLabel(
+                    date_frame,
+                    text=f"Created: {acc.get('created_at', '')}",
+                    font=ctk.CTkFont(size=11),
+                    text_color="#90a4ae"
+                )
+                lbl_dates.pack()
+
+                actions_frame = ctk.CTkFrame(row, fg_color="transparent")
+                actions_frame.pack(side="right", padx=(10, 12), pady=8)
+
+                if not is_success:
+                    btn_retry = ctk.CTkButton(
+                        actions_frame,
+                        text="🔁 Retry",
+                        width=85,
+                        height=32,
+                        fg_color="#e65100",
+                        hover_color="#bf360c",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        command=lambda a=acc: self.retry_single_account(a)
+                    )
+                    btn_retry.pack(side="left", padx=4)
+
+                if is_open:
+                    btn_close = ctk.CTkButton(
+                        actions_frame,
+                        text="🔴 Close Window",
+                        width=125,
+                        height=32,
+                        fg_color="#b71c1c",
+                        hover_color="#d32f2f",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        command=lambda p=acc.get("port"): self.close_single_window_action(p)
+                    )
+                    btn_close.pack(side="left", padx=4)
+                else:
+                    btn_open_chrome = ctk.CTkButton(
+                        actions_frame,
+                        text="🌐 Open Profile",
+                        width=125,
+                        height=32,
+                        fg_color="#2e7d32" if is_success else "#0288d1",
+                        hover_color="#1b5e20" if is_success else "#0277bd",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        command=lambda aid=acc.get("id"): self.open_single_profile_action(aid)
+                    )
+                    btn_open_chrome.pack(side="left", padx=4)
+
+                btn_delete = ctk.CTkButton(
+                    actions_frame,
+                    text="✕",
+                    width=32,
+                    height=32,
+                    fg_color="#37474f",
+                    hover_color="#d32f2f",
+                    font=ctk.CTkFont(size=13, weight="bold"),
+                    command=lambda aid=acc.get("id"): self.delete_account(aid)
+                )
+                btn_delete.pack(side="left", padx=2)
 
     def retry_single_account(self, acc):
         if self.is_creating:
