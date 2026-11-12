@@ -45,6 +45,9 @@ class HarkCreatorApp(ctk.CTk):
         self.profile_filter = "All"
         self.last_atomic_msg_id = None
         self.view_mode = "Grid"
+        self.search_keyword = ""
+        self.var_solo_mode = ctk.BooleanVar(value=True)
+        self.selected_profile_idx = 0
 
         # Check License & Device HWID
         self.license_info = lm.check_system_license()
@@ -818,6 +821,76 @@ class HarkCreatorApp(ctk.CTk):
         )
         btn_retry_all.pack(side="left", padx=6, pady=8)
 
+        # Quick Switcher & Instant Search Bar
+        switcher_bar = ctk.CTkFrame(self.frame_profile_manager, fg_color="#181e28", corner_radius=8, height=44)
+        switcher_bar.pack(fill="x", pady=(2, 6))
+
+        lbl_switch = ctk.CTkLabel(
+            switcher_bar, text="⚡ Quick Switch ID:",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color="#00e5ff"
+        )
+        lbl_switch.pack(side="left", padx=(10, 8), pady=6)
+
+        self.combo_switch_account = ctk.CTkOptionMenu(
+            switcher_bar,
+            width=280,
+            height=32,
+            values=["Select Account..."],
+            command=self.on_combo_account_selected,
+            font=ctk.CTkFont(size=11),
+            dropdown_font=ctk.CTkFont(size=11),
+            fg_color="#212936",
+            button_color="#2a3547",
+            button_hover_color="#37455d"
+        )
+        self.combo_switch_account.pack(side="left", padx=(0, 6), pady=6)
+
+        btn_switch_now = ctk.CTkButton(
+            switcher_bar, text="⚡ Switch Now", width=110, height=32,
+            fg_color="#00c853", hover_color="#00a844",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self.switch_to_selected_account
+        )
+        btn_switch_now.pack(side="left", padx=(0, 6), pady=6)
+
+        btn_prev = ctk.CTkButton(
+            switcher_bar, text="◀ Prev", width=65, height=32,
+            fg_color="#263238", hover_color="#37474f",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self.switch_to_prev_account
+        )
+        btn_prev.pack(side="left", padx=(0, 4), pady=6)
+
+        btn_next = ctk.CTkButton(
+            switcher_bar, text="Next ▶", width=65, height=32,
+            fg_color="#263238", hover_color="#37474f",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self.switch_to_next_account
+        )
+        btn_next.pack(side="left", padx=(0, 10), pady=6)
+
+        chk_solo = ctk.CTkCheckBox(
+            switcher_bar,
+            text="Solo Focus Mode (Auto-close previous)",
+            variable=self.var_solo_mode,
+            font=ctk.CTkFont(size=11),
+            text_color="#b0bec5",
+            fg_color="#0288d1",
+            hover_color="#0277bd"
+        )
+        chk_solo.pack(side="left", padx=8, pady=6)
+
+        self.entry_search = ctk.CTkEntry(
+            switcher_bar,
+            width=210,
+            height=32,
+            placeholder_text="🔍 Search email or note...",
+            font=ctk.CTkFont(size=11)
+        )
+        self.entry_search.pack(side="right", padx=(0, 10), pady=6)
+        self.entry_search.bind("<KeyRelease>", self.on_search_change)
+
         # Filter Segment (All / Open / Success / Failed)
         filter_bar = ctk.CTkFrame(self.frame_profile_manager, fg_color="transparent", height=38)
         filter_bar.pack(fill="x", pady=(2, 6))
@@ -869,6 +942,63 @@ class HarkCreatorApp(ctk.CTk):
             border_color="#212631"
         )
         self.profiles_scroll.pack(fill="both", expand=True)
+
+    def on_search_change(self, event=None):
+        self.search_keyword = self.entry_search.get().strip().lower()
+        self.refresh_profile_list()
+
+    def on_combo_account_selected(self, val):
+        pass
+
+    def switch_to_account_id(self, aid):
+        if not aid:
+            return
+        # If solo focus mode is on, close previous active windows first
+        if self.var_solo_mode.get():
+            pm.close_active_hark_windows()
+            time.sleep(0.3)
+        pm.launch_chrome_profile(account_id=aid, url="https://hark.com", close_previous=False)
+        self.update_combo_selection(aid)
+        self.after(300, self.refresh_profile_list)
+        acc = next((a for a in self.accounts if a.get("id") == aid), None)
+        mail_txt = acc.get("email") if acc else f"#{aid}"
+        self.log(f"[⚡] Switched to Profile #{aid}: {mail_txt}")
+
+    def switch_to_selected_account(self):
+        val = self.combo_switch_account.get()
+        if not val or "Select" in val:
+            if self.accounts:
+                self.switch_to_account_id(self.accounts[0].get("id"))
+            return
+        try:
+            aid_str = val.split(" - ")[0].replace("#", "").strip()
+            self.switch_to_account_id(int(aid_str))
+        except Exception:
+            pass
+
+    def switch_to_next_account(self):
+        if not self.accounts:
+            return
+        self.selected_profile_idx = (self.selected_profile_idx + 1) % len(self.accounts)
+        target = self.accounts[self.selected_profile_idx]
+        self.switch_to_account_id(target.get("id"))
+
+    def switch_to_prev_account(self):
+        if not self.accounts:
+            return
+        self.selected_profile_idx = (self.selected_profile_idx - 1) % len(self.accounts)
+        target = self.accounts[self.selected_profile_idx]
+        self.switch_to_account_id(target.get("id"))
+
+    def update_combo_selection(self, aid):
+        acc = next((a for a in self.accounts if a.get("id") == aid), None)
+        if acc:
+            is_live = "🟢" if pm.is_window_alive(acc.get("port")) else "⚪"
+            lbl = f"#{acc.get('id')} - {acc.get('email')} {is_live}"
+            try:
+                self.combo_switch_account.set(lbl)
+            except Exception:
+                pass
 
     def on_view_change(self, val):
         self.view_mode = "Grid" if "Grid" in val else "List"
@@ -975,6 +1105,17 @@ class HarkCreatorApp(ctk.CTk):
             text=f"Total: {len(self.accounts)}  |  🟢 Live Open: {open_count}  |  ✅ Success: {len(success_list)}  |  ❌ Failed: {len(failed_list)}"
         )
 
+        # Update Quick Switcher Dropdown options
+        combo_vals = [
+            f"#{a.get('id')} - {a.get('email')} {'🟢' if pm.is_window_alive(a.get('port')) else '⚪'}"
+            for a in self.accounts
+        ]
+        if combo_vals:
+            try:
+                self.combo_switch_account.configure(values=combo_vals)
+            except Exception:
+                pass
+
         # Configure columns for grid
         if self.view_mode == "Grid":
             self.profiles_scroll.grid_columnconfigure(0, weight=1)
@@ -993,10 +1134,20 @@ class HarkCreatorApp(ctk.CTk):
         else:
             display_items = self.accounts
 
+        # Search Keyword Filter
+        if self.search_keyword:
+            display_items = [
+                a for a in display_items
+                if self.search_keyword in a.get("email", "").lower()
+                or self.search_keyword in str(a.get("id", "")).lower()
+                or self.search_keyword in a.get("note", "").lower()
+                or self.search_keyword in a.get("status", "").lower()
+            ]
+
         if not display_items:
             empty_lbl = ctk.CTkLabel(
                 self.profiles_scroll,
-                text=f"No accounts in '{self.profile_filter}'.",
+                text=f"No matching accounts found for '{self.search_keyword or self.profile_filter}'.",
                 font=ctk.CTkFont(size=13),
                 text_color=COLOR_TEXT_MUTED
             )
@@ -1117,41 +1268,54 @@ class HarkCreatorApp(ctk.CTk):
                 actions_frame = ctk.CTkFrame(card, fg_color="transparent")
                 actions_frame.pack(fill="x", padx=10, pady=(0, 10))
 
+                # ⚡ Switch To ID Action Button
                 if is_open:
+                    btn_switch = ctk.CTkButton(
+                        actions_frame,
+                        text="⚡ Switch & Focus",
+                        height=28,
+                        fg_color="#00897b",
+                        hover_color="#00695c",
+                        font=ctk.CTkFont(size=11, weight="bold"),
+                        command=lambda aid=acc.get("id"): self.switch_to_account_id(aid)
+                    )
+                    btn_switch.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
                     btn_win = ctk.CTkButton(
                         actions_frame,
-                        text="🔴 Close Window",
+                        text="🔴 Close",
+                        width=65,
                         height=28,
                         fg_color="#b71c1c",
                         hover_color="#d32f2f",
                         font=ctk.CTkFont(size=11, weight="bold"),
                         command=lambda p=acc.get("port"): self.close_single_window_action(p)
                     )
-                    btn_win.pack(side="left", fill="x", expand=True, padx=(0, 4))
+                    btn_win.pack(side="left", padx=(0, 4))
                 else:
-                    btn_win = ctk.CTkButton(
+                    btn_switch = ctk.CTkButton(
                         actions_frame,
-                        text="🌐 Open Profile",
+                        text="⚡ Switch To ID",
                         height=28,
                         fg_color="#2e7d32" if is_success else "#0288d1",
                         hover_color="#1b5e20" if is_success else "#0277bd",
                         font=ctk.CTkFont(size=11, weight="bold"),
-                        command=lambda aid=acc.get("id"): self.open_single_profile_action(aid)
+                        command=lambda aid=acc.get("id"): self.switch_to_account_id(aid)
                     )
-                    btn_win.pack(side="left", fill="x", expand=True, padx=(0, 4))
+                    btn_switch.pack(side="left", fill="x", expand=True, padx=(0, 4))
 
                 if not is_success:
                     btn_retry = ctk.CTkButton(
                         actions_frame,
                         text="🔁 Retry",
-                        width=70,
+                        width=65,
                         height=28,
                         fg_color="#e65100",
                         hover_color="#bf360c",
                         font=ctk.CTkFont(size=11, weight="bold"),
                         command=lambda a=acc: self.retry_single_account(a)
                     )
-                    btn_retry.pack(side="left", padx=4)
+                    btn_retry.pack(side="left", padx=2)
 
                 btn_del = ctk.CTkButton(
                     actions_frame,
@@ -1163,7 +1327,7 @@ class HarkCreatorApp(ctk.CTk):
                     font=ctk.CTkFont(size=12, weight="bold"),
                     command=lambda aid=acc.get("id"): self.delete_account(aid)
                 )
-                btn_del.pack(side="left", padx=(4, 0))
+                btn_del.pack(side="left", padx=(2, 0))
 
             else:
                 # ================= LIST FORMAT (Horizontal Wide Rows) =================
@@ -1245,24 +1409,23 @@ class HarkCreatorApp(ctk.CTk):
                 actions_frame = ctk.CTkFrame(row, fg_color="transparent")
                 actions_frame.pack(side="right", padx=(10, 12), pady=8)
 
-                if not is_success:
-                    btn_retry = ctk.CTkButton(
-                        actions_frame,
-                        text="🔁 Retry",
-                        width=85,
-                        height=32,
-                        fg_color="#e65100",
-                        hover_color="#bf360c",
-                        font=ctk.CTkFont(size=12, weight="bold"),
-                        command=lambda a=acc: self.retry_single_account(a)
-                    )
-                    btn_retry.pack(side="left", padx=4)
-
                 if is_open:
+                    btn_switch = ctk.CTkButton(
+                        actions_frame,
+                        text="⚡ Switch & Focus",
+                        width=120,
+                        height=32,
+                        fg_color="#00897b",
+                        hover_color="#00695c",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        command=lambda aid=acc.get("id"): self.switch_to_account_id(aid)
+                    )
+                    btn_switch.pack(side="left", padx=4)
+
                     btn_close = ctk.CTkButton(
                         actions_frame,
-                        text="🔴 Close Window",
-                        width=125,
+                        text="🔴 Close",
+                        width=80,
                         height=32,
                         fg_color="#b71c1c",
                         hover_color="#d32f2f",
@@ -1271,17 +1434,30 @@ class HarkCreatorApp(ctk.CTk):
                     )
                     btn_close.pack(side="left", padx=4)
                 else:
-                    btn_open_chrome = ctk.CTkButton(
+                    btn_switch = ctk.CTkButton(
                         actions_frame,
-                        text="🌐 Open Profile",
+                        text="⚡ Switch To ID",
                         width=125,
                         height=32,
                         fg_color="#2e7d32" if is_success else "#0288d1",
                         hover_color="#1b5e20" if is_success else "#0277bd",
                         font=ctk.CTkFont(size=12, weight="bold"),
-                        command=lambda aid=acc.get("id"): self.open_single_profile_action(aid)
+                        command=lambda aid=acc.get("id"): self.switch_to_account_id(aid)
                     )
-                    btn_open_chrome.pack(side="left", padx=4)
+                    btn_switch.pack(side="left", padx=4)
+
+                if not is_success:
+                    btn_retry = ctk.CTkButton(
+                        actions_frame,
+                        text="🔁 Retry",
+                        width=75,
+                        height=32,
+                        fg_color="#e65100",
+                        hover_color="#bf360c",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        command=lambda a=acc: self.retry_single_account(a)
+                    )
+                    btn_retry.pack(side="left", padx=4)
 
                 btn_delete = ctk.CTkButton(
                     actions_frame,

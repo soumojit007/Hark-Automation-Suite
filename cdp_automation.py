@@ -160,10 +160,39 @@ def wait_and_submit_hark_email(port: int, email: str, max_wait_sec: int = 45, lo
         time.sleep(2)
     log_func("[✓] Website is 100% fully loaded and settled!")
 
-    # STEP D: CLICK / SPACE INPUT BOX & ENTER EMAIL
-    log_func(f"[*] Focusing input box and typing email: '{clean_email}'...")
+    # STEP D: FOCUS INPUT BOX & ENTER EMAIL (CDP Hardware Type + React Setter)
+    log_func(f"[*] Focusing input box and inserting email: '{clean_email}'...")
     email_confirmed_in_box = False
     for attempt in range(1, 5):
+        # 1. Focus, click, and clear the input box
+        js_prep = """
+        (() => {
+            let inputs = Array.from(document.querySelectorAll("input"));
+            let input = inputs.find(i => {
+                let p = (i.placeholder || "").toLowerCase();
+                let n = (i.name || "").toLowerCase();
+                let t = (i.type || "").toLowerCase();
+                return p.includes("email") || p.includes("phone") || n.includes("email") || t === "email";
+            }) || inputs[0];
+
+            if (!input) return false;
+            input.focus();
+            input.click();
+            try {
+                input.select();
+                document.execCommand('selectAll', false, null);
+            } catch(e) {}
+            return true;
+        })()
+        """
+        execute_js(ws_url, js_prep)
+        time.sleep(0.3)
+
+        # 2. Insert email via CDP Hardware Input (simulates native OS typing/paste into focused element)
+        send_cdp_command(ws_url, "Input.insertText", {"text": clean_email})
+        time.sleep(0.4)
+
+        # 3. Ensure React property setter & trigger synthetic events as backup
         js_fill = f"""
         (() => {{
             let inputs = Array.from(document.querySelectorAll("input"));
@@ -176,32 +205,23 @@ def wait_and_submit_hark_email(port: int, email: str, max_wait_sec: int = 45, lo
 
             if (!input) return {{found: false, error: "Input not found"}};
 
-            // Click and focus (space) the input box
-            input.focus();
-            input.click();
+            if (input.value !== '{clean_email}') {{
+                let setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+                if (setter) setter.call(input, '{clean_email}');
+                else input.value = '{clean_email}';
+            }}
 
-            // Clear box first
-            let setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-            if (setter) setter.call(input, "");
-            else input.value = "";
-            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-
-            // Enter clean email
-            if (setter) setter.call(input, '{clean_email}');
-            else input.value = '{clean_email}';
-
-            input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            input.dispatchEvent(new Event('input', {{ bubbles: true, composed: true }}));
+            input.dispatchEvent(new Event('change', {{ bubbles: true, composed: true }}));
             input.dispatchEvent(new KeyboardEvent('keyup', {{ bubbles: true }}));
 
             return {{found: true, val: input.value}};
         }})()
         """
         fill_res = execute_js(ws_url, js_fill)
-        val = fill_res.get("val") if isinstance(fill_res, dict) else ""
 
-        # Wait 2 seconds to observe if React touches it
-        time.sleep(2)
+        # Wait 1.5 seconds to observe if React accepts it
+        time.sleep(1.5)
 
         js_check_val = """
         (() => {
@@ -215,8 +235,8 @@ def wait_and_submit_hark_email(port: int, email: str, max_wait_sec: int = 45, lo
         })()
         """
         still_val = execute_js(ws_url, js_check_val)
-        if still_val == clean_email:
-            log_func(f"[✓] Email verified in box without wipe: '{still_val}'")
+        if still_val and (clean_email in still_val or still_val == clean_email):
+            log_func(f"[✓] Email verified in box: '{still_val}'")
             email_confirmed_in_box = True
             break
         else:
@@ -224,33 +244,109 @@ def wait_and_submit_hark_email(port: int, email: str, max_wait_sec: int = 45, lo
             time.sleep(1)
 
     if not email_confirmed_in_box:
-        return {"success": False, "error": "Email could not be retained in Hark input box"}
+        log_func("[!] Proceeding to submit anyway (some inputs mask value in DOM)...")
 
     time.sleep(1)
 
-    # STEP E: Click Continue / Next Button
-    log_func("[*] Clicking 'Continue' button on Hark.com...")
-    js_click_continue = """
+    # STEP E: SUBMIT EMAIL (Enter Key + Submit/Arrow Button + Form RequestSubmit)
+    log_func("[*] Submitting email (Hark modern login: checking submit button, form & Enter key)...")
+    js_submit = """
     (() => {
-        let buttons = Array.from(document.querySelectorAll("button"));
-        let continueBtn = buttons.find(b => {
+        let inputs = Array.from(document.querySelectorAll("input"));
+        let input = inputs.find(i => {
+            let p = (i.placeholder || "").toLowerCase();
+            let n = (i.name || "").toLowerCase();
+            let t = (i.type || "").toLowerCase();
+            return p.includes("email") || p.includes("phone") || n.includes("email") || t === "email";
+        }) || inputs[0];
+
+        if (input) {
+            input.focus();
+        }
+
+        // 1. Look for explicit Continue/Next/Submit/Arrow button
+        let buttons = Array.from(document.querySelectorAll("button, [role='button']"));
+        let submitBtn = buttons.find(b => {
             let t = (b.innerText || "").trim().toLowerCase();
-            if (t.includes("google") || t.includes("apple") || t.includes("facebook") || t.includes("github")) {
+            if (t.includes("google") || t.includes("apple") || t.includes("facebook") || t.includes("github") || t.includes("messages")) {
                 return false;
             }
-            return t === "continue" || (t.startsWith("continue") && !t.includes("with"));
+            if (t === "continue" || t === "next" || t === "submit" || t === "sign in" || t === "log in" || (t.startsWith("continue") && !t.includes("with"))) {
+                return true;
+            }
+            if (b.type === "submit" || b.getAttribute("aria-label")?.toLowerCase().includes("submit") || b.getAttribute("aria-label")?.toLowerCase().includes("next")) {
+                return true;
+            }
+            if (b.querySelector("svg") && b.closest("form, div")) {
+                return true;
+            }
+            return false;
         });
 
-        if (!continueBtn) return {clicked: false, error: "Continue button not found"};
+        if (submitBtn) {
+            submitBtn.removeAttribute("disabled");
+            submitBtn.disabled = false;
+            submitBtn.click();
+            return {submitted: true, method: "button_click", text: submitBtn.innerText.trim()};
+        }
 
-        continueBtn.removeAttribute("disabled");
-        continueBtn.disabled = false;
-        continueBtn.click();
-        return {clicked: true, text: continueBtn.innerText.trim()};
+        // 2. Form requestSubmit
+        if (input && input.form) {
+            try {
+                if (typeof input.form.requestSubmit === "function") {
+                    input.form.requestSubmit();
+                    return {submitted: true, method: "form_requestSubmit"};
+                } else {
+                    input.form.submit();
+                    return {submitted: true, method: "form_submit"};
+                }
+            } catch (e) {}
+        }
+
+        // 3. Dispatch Enter key events
+        if (input) {
+            ['keydown', 'keypress', 'keyup'].forEach(ev => {
+                input.dispatchEvent(new KeyboardEvent(ev, {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true,
+                    cancelable: true
+                }));
+            });
+            return {submitted: true, method: "enter_key_dispatch"};
+        }
+
+        return {submitted: false, error: "No input or submit mechanism"};
     })()
     """
-    click_res = execute_js(ws_url, js_click_continue)
-    log_func(f"[*] Continue button clicked: {click_res}")
+    submit_res = execute_js(ws_url, js_submit)
+    log_func(f"[*] DOM submit action: {submit_res}")
+
+    # Send native hardware Enter key via CDP to guarantee form submission
+    send_cdp_command(ws_url, "Input.dispatchKeyEvent", {
+        "type": "rawKeyDown",
+        "windowsVirtualKeyCode": 13,
+        "nativeVirtualKeyCode": 13,
+        "macCharCode": 13,
+        "unmodifiedText": "\r",
+        "text": "\r",
+        "key": "Enter",
+        "code": "Enter"
+    })
+    time.sleep(0.1)
+    send_cdp_command(ws_url, "Input.dispatchKeyEvent", {
+        "type": "keyUp",
+        "windowsVirtualKeyCode": 13,
+        "nativeVirtualKeyCode": 13,
+        "macCharCode": 13,
+        "unmodifiedText": "\r",
+        "text": "\r",
+        "key": "Enter",
+        "code": "Enter"
+    })
+    log_func("[✓] Hardware Enter key triggered via CDP!")
 
     # STEP F: Observe next screen
     log_func("[*] Observing Hark for confirmation screen or next step...")
